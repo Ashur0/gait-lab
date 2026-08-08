@@ -113,9 +113,10 @@
   <header>
     <h1>Gait Lab</h1>
     <p class="sub">
-      Sixty creatures, each steered by a 134-weight neural network. None of them are
-      told what walking is. Every generation the twelve that travelled furthest are
-      copied and mutated; the rest are discarded. Watch the ghosts converge.
+      Sixty creatures, each steered by a 154-weight neural network, on ground that
+      will not stay flat. None of them are told what walking is. Every generation the
+      twelve that travelled furthest are copied and mutated; the rest are discarded.
+      Watch the ghosts converge.
     </p>
   </header>
 
@@ -139,7 +140,7 @@
     <div>
       <h2>No gradients</h2>
       There is no backpropagation and no training data here. Selection and gaussian
-      mutation alone. At 134 weights the search space is small enough that copying
+      mutation alone. At 154 weights the search space is small enough that copying
       what worked beats computing what should work.
     </div>
     <div>
@@ -155,6 +156,14 @@
       percent airborne. Distance alone is the wrong reward. Fitness is now
       <b>distance &times; ground contact &times; posture</b>, with hard limits on
       launch height and spine roll.
+    </div>
+    <div>
+      <h2>The ground is not flat</h2>
+      Two of the ten senses are a terrain preview: the slope just ahead and the slope
+      just crossed. On flat ground a creature can memorise a rhythm; on hills it has
+      to <b>set the leg up before the slope arrives</b>. Amplitude ramps in over the
+      first 500px so a gait can establish itself before the terrain starts asking
+      questions of it.
     </div>
     <div>
       <h2>Reading the display</h2>

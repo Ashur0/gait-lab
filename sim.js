@@ -15,6 +15,24 @@ const GRAVITY = 0.45;
 const DAMPING = 0.995;
 const CONSTRAINT_ITERATIONS = 10;  // stiffer torso — 6 lets the body fold in half
 const GROUND_Y = 0;
+
+/**
+ * Ground height at world x. Deterministic sum of sines — no state, so the renderer
+ * and the physics agree without sharing anything.
+ *
+ * Amplitude ramps in over the first 500px. Starting creatures on hills selects for
+ * whoever happens to spawn facing downhill instead of for locomotion; a flat run-up
+ * lets a gait establish itself before the terrain starts asking questions of it.
+ */
+export function groundAt(x) {
+  const ramp = Math.min(1, Math.max(0, x - 120) / 500);
+  return (
+    ramp *
+    (Math.sin(x * 0.0121) * 10 +
+      Math.sin(x * 0.0292 + 1.7) * 4.5 +
+      Math.sin(x * 0.0067 + 0.4) * 6.5)
+  );
+}
 const GROUND_FRICTION = 0.42;
 // Max height the COM may reach above rest before we call it a leap, not a step.
 const LAUNCH_CEILING = 90;
@@ -59,14 +77,14 @@ const MORPHOLOGY = {
 };
 
 const N_MUSCLES = MORPHOLOGY.muscles.length;
-const N_INPUTS = 8;
+const N_INPUTS = 10;
 const N_HIDDEN = 10;
 export const N_PARAMS =
   N_INPUTS * N_HIDDEN + N_HIDDEN + N_HIDDEN * N_MUSCLES + N_MUSCLES;
 
 // ── Tiny MLP policy ───────────────────────────────────────────────────────────
 // tanh hidden layer, tanh output. Outputs map directly to muscle contraction in
-// [-1, 1]. Small enough (that's 134 weights) that plain evolution beats gradient
+// [-1, 1]. Small enough (see N_PARAMS) that plain evolution beats gradient
 // methods here — no backprop, no dataset, no training rig.
 function policy(params, inputs, out) {
   let p = 0;
@@ -161,11 +179,16 @@ export function stepCreature(c) {
   _in[0] = Math.sin(phase);
   _in[1] = Math.cos(phase);
   _in[2] = (c.y[1] - c.y[3]) / 30; // body pitch
-  _in[3] = (cy - GROUND_Y) / 60 + 1; // ride height
+  const gHere = groundAt(cx);
+  _in[3] = (cy - gHere) / 60 + 1; // ride height above LOCAL ground
   _in[4] = (c.x[2] - c.px[2]) * 0.5; // forward velocity
   _in[5] = c.grounded[5] ? 1 : -1; // front foot contact
   _in[6] = c.grounded[7] ? 1 : -1; // rear foot contact
-  _in[7] = 1; // constant — lets the net learn a resting posture
+  // Terrain preview. Without these the network can only react after a foot lands;
+  // with them it can set the leg up before the slope arrives.
+  _in[7] = (groundAt(cx + 46) - gHere) / 18; // slope ahead
+  _in[8] = (gHere - groundAt(cx - 32)) / 18; // slope just crossed
+  _in[9] = 1; // constant — lets the net learn a resting posture
 
   policy(c.params, _in, c.act);
 
@@ -196,8 +219,9 @@ export function stepCreature(c) {
     // constraint passes — resolving it only once per frame produces visible jitter.
     for (let i = 0; i < c.x.length; i++) {
       c.grounded[i] = 0;
-      if (c.y[i] > GROUND_Y) {
-        c.y[i] = GROUND_Y;
+      const gy = groundAt(c.x[i]);
+      if (c.y[i] > gy) {
+        c.y[i] = gy;
         c.grounded[i] = 1;
         anyGrounded = 1;
         const vx = c.x[i] - c.px[i];
@@ -224,11 +248,12 @@ export function stepCreature(c) {
   // A creature that has face-planted is done — otherwise evolution discovers that
   // faceplanting and sliding scores as well as walking, and you get a population of
   // very fast corpses instead of a gait.
-  if (c.y[1] > -14 && c.y[3] > -14) c.alive = false;
+  const gTorso = groundAt(centreX(c));
+  if (c.y[1] - gTorso > -14 && c.y[3] - gTorso > -14) c.alive = false;
 
   // Ballistic leaps are not a gait. Without this, the winning strategy is to coil the
   // legs, catapult once, and glide — 90% airborne, and it looks nothing like walking.
-  if (centreY(c) < -LAUNCH_CEILING) c.alive = false;
+  if (centreY(c) - groundAt(centreX(c)) < -LAUNCH_CEILING) c.alive = false;
 
   // Nor is lying down. Soft posture *shaping* was not enough on its own: distance
   // still outbid it and the body settled into a diagonal triangle that shuffled along.
@@ -243,7 +268,7 @@ export function stepCreature(c) {
   // Posture bookkeeping. `level` = torso close to horizontal; `tall` = riding at
   // roughly its standing height rather than folded onto the ground.
   const level = 1 - Math.min(1, Math.abs(c.y[1] - c.y[3]) / 34);
-  const tall = 1 - Math.min(1, Math.abs(centreY(c) - REST_Y) / 26);
+  const tall = 1 - Math.min(1, Math.abs(centreY(c) - groundAt(centreX(c)) - REST_Y) / 26);
   c.postureSum += level * 0.5 + tall * 0.5;
 
   // ── Fitness shaping ─────────────────────────────────────────────────────────

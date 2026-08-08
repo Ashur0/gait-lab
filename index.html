@@ -113,9 +113,10 @@
   <header>
     <h1>Gait Lab</h1>
     <p class="sub">
-      Sixty creatures, each steered by a 134-weight neural network. None of them are
-      told what walking is. Every generation the twelve that travelled furthest are
-      copied and mutated; the rest are discarded. Watch the ghosts converge.
+      Sixty creatures, each steered by a 154-weight neural network, on ground that
+      will not stay flat. None of them are told what walking is. Every generation the
+      twelve that travelled furthest are copied and mutated; the rest are discarded.
+      Watch the ghosts converge.
     </p>
   </header>
 
@@ -139,7 +140,7 @@
     <div>
       <h2>No gradients</h2>
       There is no backpropagation and no training data here. Selection and gaussian
-      mutation alone. At 134 weights the search space is small enough that copying
+      mutation alone. At 154 weights the search space is small enough that copying
       what worked beats computing what should work.
     </div>
     <div>
@@ -155,6 +156,14 @@
       percent airborne. Distance alone is the wrong reward. Fitness is now
       <b>distance &times; ground contact &times; posture</b>, with hard limits on
       launch height and spine roll.
+    </div>
+    <div>
+      <h2>The ground is not flat</h2>
+      Two of the ten senses are a terrain preview: the slope just ahead and the slope
+      just crossed. On flat ground a creature can memorise a rhythm; on hills it has
+      to <b>set the leg up before the slope arrives</b>. Amplitude ramps in over the
+      first 500px so a gait can establish itself before the terrain starts asking
+      questions of it.
     </div>
     <div>
       <h2>Reading the display</h2>
@@ -184,6 +193,24 @@ const GRAVITY = 0.45;
 const DAMPING = 0.995;
 const CONSTRAINT_ITERATIONS = 10;  // stiffer torso — 6 lets the body fold in half
 const GROUND_Y = 0;
+
+/**
+ * Ground height at world x. Deterministic sum of sines — no state, so the renderer
+ * and the physics agree without sharing anything.
+ *
+ * Amplitude ramps in over the first 500px. Starting creatures on hills selects for
+ * whoever happens to spawn facing downhill instead of for locomotion; a flat run-up
+ * lets a gait establish itself before the terrain starts asking questions of it.
+ */
+function groundAt(x) {
+  const ramp = Math.min(1, Math.max(0, x - 120) / 500);
+  return (
+    ramp *
+    (Math.sin(x * 0.0121) * 10 +
+      Math.sin(x * 0.0292 + 1.7) * 4.5 +
+      Math.sin(x * 0.0067 + 0.4) * 6.5)
+  );
+}
 const GROUND_FRICTION = 0.42;
 // Max height the COM may reach above rest before we call it a leap, not a step.
 const LAUNCH_CEILING = 90;
@@ -228,14 +255,14 @@ const MORPHOLOGY = {
 };
 
 const N_MUSCLES = MORPHOLOGY.muscles.length;
-const N_INPUTS = 8;
+const N_INPUTS = 10;
 const N_HIDDEN = 10;
 const N_PARAMS =
   N_INPUTS * N_HIDDEN + N_HIDDEN + N_HIDDEN * N_MUSCLES + N_MUSCLES;
 
 // ── Tiny MLP policy ───────────────────────────────────────────────────────────
 // tanh hidden layer, tanh output. Outputs map directly to muscle contraction in
-// [-1, 1]. Small enough (that's 134 weights) that plain evolution beats gradient
+// [-1, 1]. Small enough (see N_PARAMS) that plain evolution beats gradient
 // methods here — no backprop, no dataset, no training rig.
 function policy(params, inputs, out) {
   let p = 0;
@@ -330,11 +357,16 @@ function stepCreature(c) {
   _in[0] = Math.sin(phase);
   _in[1] = Math.cos(phase);
   _in[2] = (c.y[1] - c.y[3]) / 30; // body pitch
-  _in[3] = (cy - GROUND_Y) / 60 + 1; // ride height
+  const gHere = groundAt(cx);
+  _in[3] = (cy - gHere) / 60 + 1; // ride height above LOCAL ground
   _in[4] = (c.x[2] - c.px[2]) * 0.5; // forward velocity
   _in[5] = c.grounded[5] ? 1 : -1; // front foot contact
   _in[6] = c.grounded[7] ? 1 : -1; // rear foot contact
-  _in[7] = 1; // constant — lets the net learn a resting posture
+  // Terrain preview. Without these the network can only react after a foot lands;
+  // with them it can set the leg up before the slope arrives.
+  _in[7] = (groundAt(cx + 46) - gHere) / 18; // slope ahead
+  _in[8] = (gHere - groundAt(cx - 32)) / 18; // slope just crossed
+  _in[9] = 1; // constant — lets the net learn a resting posture
 
   policy(c.params, _in, c.act);
 
@@ -365,8 +397,9 @@ function stepCreature(c) {
     // constraint passes — resolving it only once per frame produces visible jitter.
     for (let i = 0; i < c.x.length; i++) {
       c.grounded[i] = 0;
-      if (c.y[i] > GROUND_Y) {
-        c.y[i] = GROUND_Y;
+      const gy = groundAt(c.x[i]);
+      if (c.y[i] > gy) {
+        c.y[i] = gy;
         c.grounded[i] = 1;
         anyGrounded = 1;
         const vx = c.x[i] - c.px[i];
@@ -393,11 +426,12 @@ function stepCreature(c) {
   // A creature that has face-planted is done — otherwise evolution discovers that
   // faceplanting and sliding scores as well as walking, and you get a population of
   // very fast corpses instead of a gait.
-  if (c.y[1] > -14 && c.y[3] > -14) c.alive = false;
+  const gTorso = groundAt(centreX(c));
+  if (c.y[1] - gTorso > -14 && c.y[3] - gTorso > -14) c.alive = false;
 
   // Ballistic leaps are not a gait. Without this, the winning strategy is to coil the
   // legs, catapult once, and glide — 90% airborne, and it looks nothing like walking.
-  if (centreY(c) < -LAUNCH_CEILING) c.alive = false;
+  if (centreY(c) - groundAt(centreX(c)) < -LAUNCH_CEILING) c.alive = false;
 
   // Nor is lying down. Soft posture *shaping* was not enough on its own: distance
   // still outbid it and the body settled into a diagonal triangle that shuffled along.
@@ -412,7 +446,7 @@ function stepCreature(c) {
   // Posture bookkeeping. `level` = torso close to horizontal; `tall` = riding at
   // roughly its standing height rather than folded onto the ground.
   const level = 1 - Math.min(1, Math.abs(c.y[1] - c.y[3]) / 34);
-  const tall = 1 - Math.min(1, Math.abs(centreY(c) - REST_Y) / 26);
+  const tall = 1 - Math.min(1, Math.abs(centreY(c) - groundAt(centreX(c)) - REST_Y) / 26);
   c.postureSum += level * 0.5 + tall * 0.5;
 
   // ── Fitness shaping ─────────────────────────────────────────────────────────
@@ -533,6 +567,7 @@ const _internals = { MORPHOLOGY, GROUND_Y, centreX, centreY };
  * the presentation should be calm.
  */
 
+
 // Mutable so the page can hand us a dark palette; the canvas must not stay a white
 // slab when the viewer's theme is dark.
 let INK = '#12151a';
@@ -559,29 +594,38 @@ function render(ctx, world, W, H, opts = {}) {
 
   // Treadmill: the ground scrolls, the creatures stay put. Each is drawn relative to
   // its own centre of mass so the whole population superimposes at one anchor.
-  const scrollX = leader ? leaderX(leader) * scale : 0;
+  const lx = leader ? leaderX(leader) : 0;
   const anchorX = W * 0.42;
+  const lg = groundAt(lx);
 
-  drawGrid(ctx, W, H, scrollX, groundY);
-  drawGround(ctx, W, H, scrollX, groundY, scale);
+  drawGrid(ctx, W, H, lx * scale, groundY);
+  drawTerrain(ctx, W, H, lx, anchorX, groundY, scale);
 
   if (showPopulation) {
     for (const c of world.population) {
       if (c === leader || !c.alive) continue;
-      drawAt(ctx, c, anchorX, groundY, scale, 0.09, false);
+      drawAt(ctx, c, anchorX, groundY, scale, 0.09, false, lg);
     }
   }
-  if (leader) drawAt(ctx, leader, anchorX, groundY, scale, 1, true);
+  if (leader) drawAt(ctx, leader, anchorX, groundY, scale, 1, true, lg);
 
   drawPanel(ctx, world, W, H, leader);
 }
 
-/** Draw one creature at a fixed screen anchor, in its own local frame. */
-function drawAt(ctx, c, anchorX, groundY, scale, alpha, highlight) {
+/**
+ * Draw one creature at a fixed screen anchor, in its own local frame.
+ *
+ * `leaderGround` shifts each creature vertically by the difference between its own
+ * local ground height and the leader's. Only one terrain profile is drawn (the
+ * leader's), so without this the ghosts — which are metres away on genuinely
+ * different ground — would visibly float above or sink through the drawn line.
+ */
+function drawAt(ctx, c, anchorX, groundY, scale, alpha, highlight, leaderGround) {
+  const ox = leaderX(c);
   ctx.save();
   ctx.translate(anchorX, groundY);
   ctx.scale(scale, scale);
-  ctx.translate(-leaderX(c), 0);
+  ctx.translate(-ox, leaderGround - groundAt(ox));
   drawCreature(ctx, c, alpha, highlight);
   ctx.restore();
 }
@@ -610,44 +654,50 @@ function drawGrid(ctx, W, H, camX, groundY) {
   ctx.stroke();
 }
 
-function drawGround(ctx, W, H, camX, groundY, scale = 1) {
+function drawTerrain(ctx, W, H, lx, anchorX, groundY, scale) {
+  const toWorld = (sx) => lx + (sx - anchorX) / scale;
+  const toScreenY = (wx) => groundY + groundAt(wx) * scale;
+
+  // Profile.
   ctx.strokeStyle = INK;
   ctx.lineWidth = 1.25;
   ctx.beginPath();
-  ctx.moveTo(0, groundY + 0.5);
-  ctx.lineTo(W, groundY + 0.5);
+  for (let sx = 0; sx <= W; sx += 2) {
+    const y = toScreenY(toWorld(sx));
+    sx === 0 ? ctx.moveTo(sx, y) : ctx.lineTo(sx, y);
+  }
   ctx.stroke();
 
-  // Hatching below grade — reads as "solid" without a heavy fill.
+  // Hatching below grade, clipped to the profile so it reads as solid material.
+  ctx.save();
+  ctx.beginPath();
+  for (let sx = 0; sx <= W; sx += 2) {
+    const y = toScreenY(toWorld(sx));
+    sx === 0 ? ctx.moveTo(sx, y) : ctx.lineTo(sx, y);
+  }
+  ctx.lineTo(W, H);
+  ctx.lineTo(0, H);
+  ctx.closePath();
+  ctx.clip();
   ctx.strokeStyle = HAIRLINE;
   ctx.lineWidth = 1;
   ctx.beginPath();
-  const s = 9;
-  const off = -(camX % s);
-  for (let x = off - H; x < W + s; x += s) {
-    ctx.moveTo(x, groundY + 1);
-    ctx.lineTo(x + 22, groundY + 23);
+  for (let x = -H; x < W + 9; x += 9) {
+    ctx.moveTo(x, groundY - 40);
+    ctx.lineTo(x + 64, groundY + 24);
   }
   ctx.stroke();
-  ctx.fillStyle = PAPER;
-  ctx.fillRect(0, groundY + 24, W, H - groundY);
+  ctx.restore();
 
-  // Distance ticks every 200px of world space.
+  // Distance ticks in world units, riding the surface.
   ctx.fillStyle = MUTED;
   ctx.font = MONO_SM;
   ctx.textAlign = 'center';
-  const stepPx = 200 * scale;
-  const first = Math.floor(camX / stepPx) * stepPx;
-  for (let sxWorld = first; sxWorld < camX + W; sxWorld += stepPx) {
-    const sx = sxWorld - camX;
-    const wx = Math.round(sxWorld / scale);
-    if (sx < 24 || sx > W - 24) continue;
-    ctx.strokeStyle = MUTED;
-    ctx.beginPath();
-    ctx.moveTo(sx + 0.5, groundY + 1);
-    ctx.lineTo(sx + 0.5, groundY + 7);
-    ctx.stroke();
-    ctx.fillText(`${wx}`, sx, groundY + 19);
+  const first = Math.floor(toWorld(0) / 200) * 200;
+  for (let wx = first; wx < toWorld(W) + 200; wx += 200) {
+    const sx = anchorX + (wx - lx) * scale;
+    if (sx < 26 || sx > W - 26) continue;
+    ctx.fillText(`${wx}`, sx, toScreenY(wx) + 19);
   }
   ctx.textAlign = 'left';
 }
@@ -732,7 +782,7 @@ function drawPanel(ctx, world, W, H, leader) {
 
   ctx.font = MONO_SM;
   ctx.fillStyle = MUTED;
-  ctx.fillText('GAIT LAB \u2014 evolved locomotion, 134 weights, no gradients', pad, H - pad);
+  ctx.fillText(`GAIT LAB \u2014 evolved locomotion, ${N_PARAMS} weights, no gradients`, pad, H - pad);
 }
 
 function drawFitnessPlot(ctx, world, x, y, w, h) {

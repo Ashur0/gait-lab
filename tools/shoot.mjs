@@ -7,7 +7,7 @@ import { render } from '../render.js';
 // in screenshots. The browser uses its own ui-monospace stack and needs nothing.
 GlobalFonts.registerFromPath('/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf', 'GaitMono');
 const W = 1100, H = 620;
-const targets = [0, 6, 20, 70];   // generations to capture
+const targets = [90];
 const world = createWorld();
 
 for (const g of targets) {

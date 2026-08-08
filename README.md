@@ -1,8 +1,8 @@
 # Gait Lab
 
-Sixty creatures teach themselves to walk in your browser. No backpropagation, no
-training data — a 134-weight neural network per creature, and nothing but truncation
-selection and gaussian mutation.
+Sixty creatures teach themselves to walk in your browser, on ground that will not
+stay flat. No backpropagation, no training data — a 154-weight neural network per
+creature, and nothing but truncation selection and gaussian mutation.
 
 **Live: https://ashur0.github.io/gait-lab/**
 
@@ -10,6 +10,15 @@ The solid figure is the current leader; the pale cloud behind it is the other
 fifty-nine, each drawn in its own local frame so the whole population superimposes.
 Red muscles are contracting, blue extending, and a red ring marks a loaded foot.
 The cloud tightening into one silhouette is the population converging on a gait.
+
+## The ground is not flat
+
+Two of the ten senses are a terrain preview: the slope just ahead and the slope just
+crossed. On flat ground a creature can memorise a rhythm and never look at its feet;
+on hills it has to set the leg up *before* the slope arrives, which is what makes the
+contact sensors earn their place. Terrain amplitude ramps in over the first 500px —
+starting creatures on hills selects for whoever happened to spawn facing downhill
+rather than for locomotion.
 
 ## Two things it learned before it learned to walk
 

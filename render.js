@@ -9,6 +9,8 @@
  * the presentation should be calm.
  */
 
+import { groundAt, N_PARAMS } from './sim.js';
+
 // Mutable so the page can hand us a dark palette; the canvas must not stay a white
 // slab when the viewer's theme is dark.
 let INK = '#12151a';
@@ -35,29 +37,38 @@ export function render(ctx, world, W, H, opts = {}) {
 
   // Treadmill: the ground scrolls, the creatures stay put. Each is drawn relative to
   // its own centre of mass so the whole population superimposes at one anchor.
-  const scrollX = leader ? leaderX(leader) * scale : 0;
+  const lx = leader ? leaderX(leader) : 0;
   const anchorX = W * 0.42;
+  const lg = groundAt(lx);
 
-  drawGrid(ctx, W, H, scrollX, groundY);
-  drawGround(ctx, W, H, scrollX, groundY, scale);
+  drawGrid(ctx, W, H, lx * scale, groundY);
+  drawTerrain(ctx, W, H, lx, anchorX, groundY, scale);
 
   if (showPopulation) {
     for (const c of world.population) {
       if (c === leader || !c.alive) continue;
-      drawAt(ctx, c, anchorX, groundY, scale, 0.09, false);
+      drawAt(ctx, c, anchorX, groundY, scale, 0.09, false, lg);
     }
   }
-  if (leader) drawAt(ctx, leader, anchorX, groundY, scale, 1, true);
+  if (leader) drawAt(ctx, leader, anchorX, groundY, scale, 1, true, lg);
 
   drawPanel(ctx, world, W, H, leader);
 }
 
-/** Draw one creature at a fixed screen anchor, in its own local frame. */
-function drawAt(ctx, c, anchorX, groundY, scale, alpha, highlight) {
+/**
+ * Draw one creature at a fixed screen anchor, in its own local frame.
+ *
+ * `leaderGround` shifts each creature vertically by the difference between its own
+ * local ground height and the leader's. Only one terrain profile is drawn (the
+ * leader's), so without this the ghosts — which are metres away on genuinely
+ * different ground — would visibly float above or sink through the drawn line.
+ */
+function drawAt(ctx, c, anchorX, groundY, scale, alpha, highlight, leaderGround) {
+  const ox = leaderX(c);
   ctx.save();
   ctx.translate(anchorX, groundY);
   ctx.scale(scale, scale);
-  ctx.translate(-leaderX(c), 0);
+  ctx.translate(-ox, leaderGround - groundAt(ox));
   drawCreature(ctx, c, alpha, highlight);
   ctx.restore();
 }
@@ -86,44 +97,50 @@ function drawGrid(ctx, W, H, camX, groundY) {
   ctx.stroke();
 }
 
-function drawGround(ctx, W, H, camX, groundY, scale = 1) {
+function drawTerrain(ctx, W, H, lx, anchorX, groundY, scale) {
+  const toWorld = (sx) => lx + (sx - anchorX) / scale;
+  const toScreenY = (wx) => groundY + groundAt(wx) * scale;
+
+  // Profile.
   ctx.strokeStyle = INK;
   ctx.lineWidth = 1.25;
   ctx.beginPath();
-  ctx.moveTo(0, groundY + 0.5);
-  ctx.lineTo(W, groundY + 0.5);
+  for (let sx = 0; sx <= W; sx += 2) {
+    const y = toScreenY(toWorld(sx));
+    sx === 0 ? ctx.moveTo(sx, y) : ctx.lineTo(sx, y);
+  }
   ctx.stroke();
 
-  // Hatching below grade — reads as "solid" without a heavy fill.
+  // Hatching below grade, clipped to the profile so it reads as solid material.
+  ctx.save();
+  ctx.beginPath();
+  for (let sx = 0; sx <= W; sx += 2) {
+    const y = toScreenY(toWorld(sx));
+    sx === 0 ? ctx.moveTo(sx, y) : ctx.lineTo(sx, y);
+  }
+  ctx.lineTo(W, H);
+  ctx.lineTo(0, H);
+  ctx.closePath();
+  ctx.clip();
   ctx.strokeStyle = HAIRLINE;
   ctx.lineWidth = 1;
   ctx.beginPath();
-  const s = 9;
-  const off = -(camX % s);
-  for (let x = off - H; x < W + s; x += s) {
-    ctx.moveTo(x, groundY + 1);
-    ctx.lineTo(x + 22, groundY + 23);
+  for (let x = -H; x < W + 9; x += 9) {
+    ctx.moveTo(x, groundY - 40);
+    ctx.lineTo(x + 64, groundY + 24);
   }
   ctx.stroke();
-  ctx.fillStyle = PAPER;
-  ctx.fillRect(0, groundY + 24, W, H - groundY);
+  ctx.restore();
 
-  // Distance ticks every 200px of world space.
+  // Distance ticks in world units, riding the surface.
   ctx.fillStyle = MUTED;
   ctx.font = MONO_SM;
   ctx.textAlign = 'center';
-  const stepPx = 200 * scale;
-  const first = Math.floor(camX / stepPx) * stepPx;
-  for (let sxWorld = first; sxWorld < camX + W; sxWorld += stepPx) {
-    const sx = sxWorld - camX;
-    const wx = Math.round(sxWorld / scale);
-    if (sx < 24 || sx > W - 24) continue;
-    ctx.strokeStyle = MUTED;
-    ctx.beginPath();
-    ctx.moveTo(sx + 0.5, groundY + 1);
-    ctx.lineTo(sx + 0.5, groundY + 7);
-    ctx.stroke();
-    ctx.fillText(`${wx}`, sx, groundY + 19);
+  const first = Math.floor(toWorld(0) / 200) * 200;
+  for (let wx = first; wx < toWorld(W) + 200; wx += 200) {
+    const sx = anchorX + (wx - lx) * scale;
+    if (sx < 26 || sx > W - 26) continue;
+    ctx.fillText(`${wx}`, sx, toScreenY(wx) + 19);
   }
   ctx.textAlign = 'left';
 }
@@ -208,7 +225,7 @@ function drawPanel(ctx, world, W, H, leader) {
 
   ctx.font = MONO_SM;
   ctx.fillStyle = MUTED;
-  ctx.fillText('GAIT LAB \u2014 evolved locomotion, 134 weights, no gradients', pad, H - pad);
+  ctx.fillText(`GAIT LAB \u2014 evolved locomotion, ${N_PARAMS} weights, no gradients`, pad, H - pad);
 }
 
 function drawFitnessPlot(ctx, world, x, y, w, h) {
