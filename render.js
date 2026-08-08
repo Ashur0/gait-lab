@@ -9,7 +9,7 @@
  * the presentation should be calm.
  */
 
-import { groundAt, N_PARAMS } from './sim.js';
+import { groundAt, N_PARAMS, obstacles } from './sim.js';
 
 // Mutable so the page can hand us a dark palette; the canvas must not stay a white
 // slab when the viewer's theme is dark.
@@ -29,8 +29,24 @@ const MONO = '11px GaitMono, ui-monospace, Menlo, Consolas, monospace';
 const MONO_SM = '9px GaitMono, ui-monospace, Menlo, Consolas, monospace';
 const MONO_LG = '26px GaitMono, ui-monospace, Menlo, Consolas, monospace';
 
+export const VIEW = { scale: 1.9, anchorFrac: 0.42, groundPad: 96 };
+
+/** Screen (canvas) point -> world point, given where the leader currently is. */
+export function screenToWorld(cx, cy, W, H, leaderWorldX) {
+  const gy = H - VIEW.groundPad;
+  return {
+    x: leaderWorldX + (cx - W * VIEW.anchorFrac) / VIEW.scale,
+    y: (cy - gy) / VIEW.scale,
+  };
+}
+
 export function render(ctx, world, W, H, opts = {}) {
-  const { leader, groundY = H - 96, showPopulation = true, scale = 1.9 } = opts;
+  const {
+    leader,
+    groundY = H - VIEW.groundPad,
+    showPopulation = true,
+    scale = VIEW.scale,
+  } = opts;
 
   ctx.fillStyle = PAPER;
   ctx.fillRect(0, 0, W, H);
@@ -38,11 +54,12 @@ export function render(ctx, world, W, H, opts = {}) {
   // Treadmill: the ground scrolls, the creatures stay put. Each is drawn relative to
   // its own centre of mass so the whole population superimposes at one anchor.
   const lx = leader ? leaderX(leader) : 0;
-  const anchorX = W * 0.42;
+  const anchorX = W * VIEW.anchorFrac;
   const lg = groundAt(lx);
 
   drawGrid(ctx, W, H, lx * scale, groundY);
   drawTerrain(ctx, W, H, lx, anchorX, groundY, scale);
+  drawObstacles(ctx, lx, anchorX, groundY, scale);
 
   if (showPopulation) {
     for (const c of world.population) {
@@ -143,6 +160,30 @@ function drawTerrain(ctx, W, H, lx, anchorX, groundY, scale) {
     ctx.fillText(`${wx}`, sx, toScreenY(wx) + 19);
   }
   ctx.textAlign = 'left';
+}
+
+function drawObstacles(ctx, lx, anchorX, groundY, scale) {
+  if (!obstacles.length) return;
+  ctx.save();
+  ctx.translate(anchorX, groundY);
+  ctx.scale(scale, scale);
+  ctx.translate(-lx, 0);
+  ctx.lineWidth = 1.25 / scale;
+  for (const b of obstacles) {
+    ctx.fillStyle = PAPER;
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.strokeStyle = INK;
+    ctx.strokeRect(b.x, b.y, b.w, b.h);
+    // Diagonal fill so a block reads as placed material, not a hole in the page.
+    ctx.strokeStyle = HAIRLINE;
+    ctx.beginPath();
+    for (let d = 0; d < b.w + b.h; d += 5) {
+      ctx.moveTo(b.x + Math.min(d, b.w), b.y + Math.max(0, d - b.w));
+      ctx.lineTo(b.x + Math.max(0, d - b.h), b.y + Math.min(d, b.h));
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 // ── Creature ──────────────────────────────────────────────────────────────────

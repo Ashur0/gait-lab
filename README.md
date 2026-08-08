@@ -11,6 +11,21 @@ fifty-nine, each drawn in its own local frame so the whole population superimpos
 Red muscles are contracting, blue extending, and a red ring marks a loaded foot.
 The cloud tightening into one silhouette is the population converging on a gait.
 
+## Put something in the way
+
+Click or drag on the ground to drop blocks. They persist across generations, so the
+population has to *evolve* past them rather than the current champion improvising.
+Measured over seventy generations:
+
+| obstacle | gen 5 | gen 70 | improvement |
+|---|---|---|---|
+| none | 141 | 2240 | 15.9x |
+| one block (24px) | 153 | 485 | 3.2x |
+| two stacked (48px) | 65 | 165 | 2.5x |
+
+So one block they learn around, without ever recovering clear-ground performance; a
+stack is close to a wall. You can build something they will never solve.
+
 ## The ground is not flat
 
 Two of the ten senses are a terrain preview: the slope just ahead and the slope just

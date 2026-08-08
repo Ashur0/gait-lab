@@ -34,6 +34,21 @@ export function groundAt(x) {
   );
 }
 const GROUND_FRICTION = 0.42;
+
+// ── Obstacles ─────────────────────────────────────────────────────────────────
+// World-space blocks the viewer drops in. They persist across generations, which is
+// the whole point: put a wall down and the population has to *evolve* past it rather
+// than the current champion improvising.
+export const obstacles = [];
+export const BLOCK_W = 30;
+export const BLOCK_H = 24;
+
+export function addObstacle(x) {
+  obstacles.push({ x: x - BLOCK_W / 2, y: groundAt(x) - BLOCK_H, w: BLOCK_W, h: BLOCK_H });
+}
+export function clearObstacles() {
+  obstacles.length = 0;
+}
 // Max height the COM may reach above rest before we call it a leap, not a step.
 const LAUNCH_CEILING = 90;
 // Standing centre-of-mass height, used as the posture reference.
@@ -226,6 +241,28 @@ export function stepCreature(c) {
         anyGrounded = 1;
         const vx = c.x[i] - c.px[i];
         c.x[i] = c.px[i] + vx * (1 - GROUND_FRICTION);
+      }
+
+      // Blocks. Push out along whichever axis is shallowest so a foot landing on top
+      // is stood up, while a shin hitting the side is stopped rather than teleported.
+      for (let o = 0; o < obstacles.length; o++) {
+        const b = obstacles[o];
+        if (c.x[i] < b.x || c.x[i] > b.x + b.w || c.y[i] < b.y || c.y[i] > b.y + b.h)
+          continue;
+        const dTop = c.y[i] - b.y;
+        const dLeft = c.x[i] - b.x;
+        const dRight = b.x + b.w - c.x[i];
+        if (dTop <= dLeft && dTop <= dRight) {
+          c.y[i] = b.y;
+          c.grounded[i] = 1;
+          anyGrounded = 1;
+          const vx2 = c.x[i] - c.px[i];
+          c.x[i] = c.px[i] + vx2 * (1 - GROUND_FRICTION);
+        } else if (dLeft < dRight) {
+          c.x[i] = b.x;
+        } else {
+          c.x[i] = b.x + b.w;
+        }
       }
     }
   }

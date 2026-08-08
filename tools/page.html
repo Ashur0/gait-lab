@@ -59,6 +59,7 @@
   .stage { border: 1px solid var(--hairline); background: var(--paper); overflow: hidden; }
   canvas { display: block; width: 100%; height: auto; }
 
+  .hint { margin: -6px 0 0; color: var(--muted); font-size: 11px; }
   .strip {
     display: flex;
     flex-wrap: wrap;
@@ -121,14 +122,17 @@
   </header>
 
   <div class="stage">
-    <canvas id="c" width="1180" height="620"></canvas>
+    <canvas id="c" width="1180" height="620" title="Click or drag on the ground to drop a block"></canvas>
   </div>
+  <p class="hint">Click or drag anywhere on the ground to drop a block in their path.
+    Blocks persist between generations. One they can learn around; a stack becomes a wall.</p>
 
   <div class="strip">
     <button id="pause" aria-pressed="false">Pause</button>
     <button id="reset">Restart evolution</button>
     <button id="speed">Speed &times;1</button>
     <button id="pop" aria-pressed="true">Population</button>
+    <button id="clear">Clear blocks</button>
     <span class="spacer"></span>
     <span class="legend">
       <span><i class="swatch-c"></i>contracting</span>
@@ -156,6 +160,15 @@
       percent airborne. Distance alone is the wrong reward. Fitness is now
       <b>distance &times; ground contact &times; posture</b>, with hard limits on
       launch height and spine roll.
+    </div>
+    <div>
+      <h2>Put something in the way</h2>
+      Blocks persist across generations, so the population has to evolve past them
+      rather than improvise. Measured over seventy generations: on clear ground best
+      distance improves about <b>16&times;</b>; with one block in the way, about
+      <b>3&times;</b>, and it never recovers clear-ground performance. Stack two and
+      it is close to a wall &mdash; they keep trying and mostly do not get over.
+      You can build something they will never solve, which is its own kind of result.
     </div>
     <div>
       <h2>The ground is not flat</h2>
@@ -192,6 +205,7 @@ function palette() {
 }
 
 let world = createWorld();
+let dragging = false;
 let paused = false;
 let speed = 1;
 let showPop = true;
@@ -215,6 +229,32 @@ btnPop.onclick = () => {
   showPop = !showPop;
   btnPop.setAttribute('aria-pressed', String(showPop));
 };
+document.getElementById('clear').onclick = () => clearObstacles();
+
+// ── Dropping blocks ──────────────────────────────────────────────────────────
+// The canvas is CSS-scaled, so client pixels must be converted to canvas pixels
+// before the world transform, or blocks land where you did not click.
+function placeFrom(ev) {
+  const r = cv.getBoundingClientRect();
+  const cx = ((ev.clientX - r.left) / r.width) * cv.width;
+  const cy = ((ev.clientY - r.top) / r.height) * cv.height;
+  const l = leader(world);
+  const w = screenToWorld(cx, cy, cv.width, cv.height, l ? leaderWorldX(l) : 0);
+  addObstacle(w.x);
+}
+function leaderWorldX(c) {
+  let s = 0;
+  for (let i = 0; i < c.x.length; i++) s += c.x[i];
+  return s / c.x.length;
+}
+cv.addEventListener('pointerdown', (e) => {
+  dragging = true;
+  cv.setPointerCapture(e.pointerId);
+  placeFrom(e);
+});
+cv.addEventListener('pointermove', (e) => { if (dragging) placeFrom(e); });
+cv.addEventListener('pointerup', () => { dragging = false; });
+cv.style.cursor = 'crosshair';
 
 function frame() {
   if (!paused) for (let i = 0; i < speed; i++) stepWorld(world);

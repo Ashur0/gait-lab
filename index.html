@@ -59,6 +59,7 @@
   .stage { border: 1px solid var(--hairline); background: var(--paper); overflow: hidden; }
   canvas { display: block; width: 100%; height: auto; }
 
+  .hint { margin: -6px 0 0; color: var(--muted); font-size: 11px; }
   .strip {
     display: flex;
     flex-wrap: wrap;
@@ -121,14 +122,17 @@
   </header>
 
   <div class="stage">
-    <canvas id="c" width="1180" height="620"></canvas>
+    <canvas id="c" width="1180" height="620" title="Click or drag on the ground to drop a block"></canvas>
   </div>
+  <p class="hint">Click or drag anywhere on the ground to drop a block in their path.
+    Blocks persist between generations. One they can learn around; a stack becomes a wall.</p>
 
   <div class="strip">
     <button id="pause" aria-pressed="false">Pause</button>
     <button id="reset">Restart evolution</button>
     <button id="speed">Speed &times;1</button>
     <button id="pop" aria-pressed="true">Population</button>
+    <button id="clear">Clear blocks</button>
     <span class="spacer"></span>
     <span class="legend">
       <span><i class="swatch-c"></i>contracting</span>
@@ -156,6 +160,15 @@
       percent airborne. Distance alone is the wrong reward. Fitness is now
       <b>distance &times; ground contact &times; posture</b>, with hard limits on
       launch height and spine roll.
+    </div>
+    <div>
+      <h2>Put something in the way</h2>
+      Blocks persist across generations, so the population has to evolve past them
+      rather than improvise. Measured over seventy generations: on clear ground best
+      distance improves about <b>16&times;</b>; with one block in the way, about
+      <b>3&times;</b>, and it never recovers clear-ground performance. Stack two and
+      it is close to a wall &mdash; they keep trying and mostly do not get over.
+      You can build something they will never solve, which is its own kind of result.
     </div>
     <div>
       <h2>The ground is not flat</h2>
@@ -212,6 +225,21 @@ function groundAt(x) {
   );
 }
 const GROUND_FRICTION = 0.42;
+
+// ── Obstacles ─────────────────────────────────────────────────────────────────
+// World-space blocks the viewer drops in. They persist across generations, which is
+// the whole point: put a wall down and the population has to *evolve* past it rather
+// than the current champion improvising.
+const obstacles = [];
+const BLOCK_W = 30;
+const BLOCK_H = 24;
+
+function addObstacle(x) {
+  obstacles.push({ x: x - BLOCK_W / 2, y: groundAt(x) - BLOCK_H, w: BLOCK_W, h: BLOCK_H });
+}
+function clearObstacles() {
+  obstacles.length = 0;
+}
 // Max height the COM may reach above rest before we call it a leap, not a step.
 const LAUNCH_CEILING = 90;
 // Standing centre-of-mass height, used as the posture reference.
@@ -405,6 +433,28 @@ function stepCreature(c) {
         const vx = c.x[i] - c.px[i];
         c.x[i] = c.px[i] + vx * (1 - GROUND_FRICTION);
       }
+
+      // Blocks. Push out along whichever axis is shallowest so a foot landing on top
+      // is stood up, while a shin hitting the side is stopped rather than teleported.
+      for (let o = 0; o < obstacles.length; o++) {
+        const b = obstacles[o];
+        if (c.x[i] < b.x || c.x[i] > b.x + b.w || c.y[i] < b.y || c.y[i] > b.y + b.h)
+          continue;
+        const dTop = c.y[i] - b.y;
+        const dLeft = c.x[i] - b.x;
+        const dRight = b.x + b.w - c.x[i];
+        if (dTop <= dLeft && dTop <= dRight) {
+          c.y[i] = b.y;
+          c.grounded[i] = 1;
+          anyGrounded = 1;
+          const vx2 = c.x[i] - c.px[i];
+          c.x[i] = c.px[i] + vx2 * (1 - GROUND_FRICTION);
+        } else if (dLeft < dRight) {
+          c.x[i] = b.x;
+        } else {
+          c.x[i] = b.x + b.w;
+        }
+      }
     }
   }
 
@@ -586,8 +636,24 @@ const MONO = '11px GaitMono, ui-monospace, Menlo, Consolas, monospace';
 const MONO_SM = '9px GaitMono, ui-monospace, Menlo, Consolas, monospace';
 const MONO_LG = '26px GaitMono, ui-monospace, Menlo, Consolas, monospace';
 
+const VIEW = { scale: 1.9, anchorFrac: 0.42, groundPad: 96 };
+
+/** Screen (canvas) point -> world point, given where the leader currently is. */
+function screenToWorld(cx, cy, W, H, leaderWorldX) {
+  const gy = H - VIEW.groundPad;
+  return {
+    x: leaderWorldX + (cx - W * VIEW.anchorFrac) / VIEW.scale,
+    y: (cy - gy) / VIEW.scale,
+  };
+}
+
 function render(ctx, world, W, H, opts = {}) {
-  const { leader, groundY = H - 96, showPopulation = true, scale = 1.9 } = opts;
+  const {
+    leader,
+    groundY = H - VIEW.groundPad,
+    showPopulation = true,
+    scale = VIEW.scale,
+  } = opts;
 
   ctx.fillStyle = PAPER;
   ctx.fillRect(0, 0, W, H);
@@ -595,11 +661,12 @@ function render(ctx, world, W, H, opts = {}) {
   // Treadmill: the ground scrolls, the creatures stay put. Each is drawn relative to
   // its own centre of mass so the whole population superimposes at one anchor.
   const lx = leader ? leaderX(leader) : 0;
-  const anchorX = W * 0.42;
+  const anchorX = W * VIEW.anchorFrac;
   const lg = groundAt(lx);
 
   drawGrid(ctx, W, H, lx * scale, groundY);
   drawTerrain(ctx, W, H, lx, anchorX, groundY, scale);
+  drawObstacles(ctx, lx, anchorX, groundY, scale);
 
   if (showPopulation) {
     for (const c of world.population) {
@@ -700,6 +767,30 @@ function drawTerrain(ctx, W, H, lx, anchorX, groundY, scale) {
     ctx.fillText(`${wx}`, sx, toScreenY(wx) + 19);
   }
   ctx.textAlign = 'left';
+}
+
+function drawObstacles(ctx, lx, anchorX, groundY, scale) {
+  if (!obstacles.length) return;
+  ctx.save();
+  ctx.translate(anchorX, groundY);
+  ctx.scale(scale, scale);
+  ctx.translate(-lx, 0);
+  ctx.lineWidth = 1.25 / scale;
+  for (const b of obstacles) {
+    ctx.fillStyle = PAPER;
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.strokeStyle = INK;
+    ctx.strokeRect(b.x, b.y, b.w, b.h);
+    // Diagonal fill so a block reads as placed material, not a hole in the page.
+    ctx.strokeStyle = HAIRLINE;
+    ctx.beginPath();
+    for (let d = 0; d < b.w + b.h; d += 5) {
+      ctx.moveTo(b.x + Math.min(d, b.w), b.y + Math.max(0, d - b.w));
+      ctx.lineTo(b.x + Math.max(0, d - b.h), b.y + Math.min(d, b.h));
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 // ── Creature ──────────────────────────────────────────────────────────────────
@@ -828,6 +919,7 @@ function palette() {
 }
 
 let world = createWorld();
+let dragging = false;
 let paused = false;
 let speed = 1;
 let showPop = true;
@@ -851,6 +943,32 @@ btnPop.onclick = () => {
   showPop = !showPop;
   btnPop.setAttribute('aria-pressed', String(showPop));
 };
+document.getElementById('clear').onclick = () => clearObstacles();
+
+// ── Dropping blocks ──────────────────────────────────────────────────────────
+// The canvas is CSS-scaled, so client pixels must be converted to canvas pixels
+// before the world transform, or blocks land where you did not click.
+function placeFrom(ev) {
+  const r = cv.getBoundingClientRect();
+  const cx = ((ev.clientX - r.left) / r.width) * cv.width;
+  const cy = ((ev.clientY - r.top) / r.height) * cv.height;
+  const l = leader(world);
+  const w = screenToWorld(cx, cy, cv.width, cv.height, l ? leaderWorldX(l) : 0);
+  addObstacle(w.x);
+}
+function leaderWorldX(c) {
+  let s = 0;
+  for (let i = 0; i < c.x.length; i++) s += c.x[i];
+  return s / c.x.length;
+}
+cv.addEventListener('pointerdown', (e) => {
+  dragging = true;
+  cv.setPointerCapture(e.pointerId);
+  placeFrom(e);
+});
+cv.addEventListener('pointermove', (e) => { if (dragging) placeFrom(e); });
+cv.addEventListener('pointerup', () => { dragging = false; });
+cv.style.cursor = 'crosshair';
 
 function frame() {
   if (!paused) for (let i = 0; i < speed; i++) stepWorld(world);
