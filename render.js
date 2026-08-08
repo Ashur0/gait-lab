@@ -250,6 +250,7 @@ function drawPanel(ctx, world, W, H, leader) {
     ['episode', `${world.step}/620`],
     ['best this gen', leader ? `${(leaderX(leader) - leader.startX).toFixed(0)} px` : '\u2014'],
     ['best ever', `${world.bestEver.toFixed(0)} px`],
+    ['median', world.median != null ? `${world.median.toFixed(0)} px` : '\u2014'],
     ['foot contact', leader ? `${(leader.contactFrac * 100).toFixed(0)} %` : '\u2014'],
   ];
   rows.forEach(([k, v], i) => {
@@ -276,20 +277,38 @@ function drawFitnessPlot(ctx, world, x, y, w, h) {
 
   ctx.fillStyle = MUTED;
   ctx.font = MONO_SM;
-  ctx.fillText('BEST DISTANCE / GENERATION', x, y - 6);
+  ctx.fillText('BEST / MEDIAN DISTANCE PER GENERATION', x, y - 6);
 
-  const hist = world.history;
-  if (hist.length < 2) return;
-  const max = Math.max(...hist, 1);
+  const best = world.history;
+  const med = world.medians;
+  if (best.length < 2) return;
+  const max = Math.max(...best, 1);
+  const px = (i) => x + (i / (best.length - 1)) * w;
+  const py = (v) => y + h - (v / max) * (h - 8) - 4;
 
+  // Band between median and best: its thickness is how much variance selection
+  // still has to work with. It narrows as the population converges.
+  ctx.fillStyle = ACCENT;
+  ctx.globalAlpha = 0.13;
+  ctx.beginPath();
+  best.forEach((v, i) => (i === 0 ? ctx.moveTo(px(i), py(v)) : ctx.lineTo(px(i), py(v))));
+  for (let i = med.length - 1; i >= 0; i--) ctx.lineTo(px(i), py(med[i]));
+  ctx.closePath();
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // Median.
+  ctx.strokeStyle = MUTED;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  med.forEach((v, i) => (i === 0 ? ctx.moveTo(px(i), py(v)) : ctx.lineTo(px(i), py(v))));
+  ctx.stroke();
+
+  // Best.
   ctx.strokeStyle = ACCENT;
   ctx.lineWidth = 1.4;
   ctx.beginPath();
-  hist.forEach((v, i) => {
-    const px = x + (i / (hist.length - 1)) * w;
-    const py = y + h - (v / max) * (h - 8) - 4;
-    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
-  });
+  best.forEach((v, i) => (i === 0 ? ctx.moveTo(px(i), py(v)) : ctx.lineTo(px(i), py(v))));
   ctx.stroke();
 
   ctx.fillStyle = MUTED;

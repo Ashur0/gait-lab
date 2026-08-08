@@ -358,6 +358,7 @@ export function createWorld(seed = 1) {
     population: [],
     genomes: [],
     history: [],
+    medians: [],
     best: 0,
     bestEver: 0,
     bestGenome: null,
@@ -387,6 +388,11 @@ export function stepWorld(w) {
     .sort((a, b) => b.f - a.f);
   w.best = scored[0].f;
   w.history.push(w.best);
+  // Median as well as best: the gap between them IS the selection pressure, and a
+  // best-only curve hides whether the population is following its champion or the
+  // champion is a lucky outlier the rest never reach.
+  w.median = scored[Math.floor(scored.length / 2)].f;
+  w.medians.push(w.median);
   if (w.best > w.bestEver) {
     w.bestEver = w.best;
     w.bestGenome = Float64Array.from(w.genomes[scored[0].i]);

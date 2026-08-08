@@ -184,6 +184,9 @@
       fifty-nine, each drawn in its own frame so the whole population superimposes.
       A red ring marks a loaded foot. Early generations are chaos; the cloud
       tightening into one silhouette is the population converging on a gait.
+      In the plot, the red line is the best creature and the grey line the median
+      &mdash; <b>the shaded gap between them is the selection pressure</b>. A widening
+      band means one lineage has found something the rest have not reached yet.
     </div>
   </div>
 </div>
@@ -549,6 +552,7 @@ function createWorld(seed = 1) {
     population: [],
     genomes: [],
     history: [],
+    medians: [],
     best: 0,
     bestEver: 0,
     bestGenome: null,
@@ -578,6 +582,11 @@ function stepWorld(w) {
     .sort((a, b) => b.f - a.f);
   w.best = scored[0].f;
   w.history.push(w.best);
+  // Median as well as best: the gap between them IS the selection pressure, and a
+  // best-only curve hides whether the population is following its champion or the
+  // champion is a lucky outlier the rest never reach.
+  w.median = scored[Math.floor(scored.length / 2)].f;
+  w.medians.push(w.median);
   if (w.best > w.bestEver) {
     w.bestEver = w.best;
     w.bestGenome = Float64Array.from(w.genomes[scored[0].i]);
@@ -857,6 +866,7 @@ function drawPanel(ctx, world, W, H, leader) {
     ['episode', `${world.step}/620`],
     ['best this gen', leader ? `${(leaderX(leader) - leader.startX).toFixed(0)} px` : '\u2014'],
     ['best ever', `${world.bestEver.toFixed(0)} px`],
+    ['median', world.median != null ? `${world.median.toFixed(0)} px` : '\u2014'],
     ['foot contact', leader ? `${(leader.contactFrac * 100).toFixed(0)} %` : '\u2014'],
   ];
   rows.forEach(([k, v], i) => {
@@ -883,20 +893,38 @@ function drawFitnessPlot(ctx, world, x, y, w, h) {
 
   ctx.fillStyle = MUTED;
   ctx.font = MONO_SM;
-  ctx.fillText('BEST DISTANCE / GENERATION', x, y - 6);
+  ctx.fillText('BEST / MEDIAN DISTANCE PER GENERATION', x, y - 6);
 
-  const hist = world.history;
-  if (hist.length < 2) return;
-  const max = Math.max(...hist, 1);
+  const best = world.history;
+  const med = world.medians;
+  if (best.length < 2) return;
+  const max = Math.max(...best, 1);
+  const px = (i) => x + (i / (best.length - 1)) * w;
+  const py = (v) => y + h - (v / max) * (h - 8) - 4;
 
+  // Band between median and best: its thickness is how much variance selection
+  // still has to work with. It narrows as the population converges.
+  ctx.fillStyle = ACCENT;
+  ctx.globalAlpha = 0.13;
+  ctx.beginPath();
+  best.forEach((v, i) => (i === 0 ? ctx.moveTo(px(i), py(v)) : ctx.lineTo(px(i), py(v))));
+  for (let i = med.length - 1; i >= 0; i--) ctx.lineTo(px(i), py(med[i]));
+  ctx.closePath();
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // Median.
+  ctx.strokeStyle = MUTED;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  med.forEach((v, i) => (i === 0 ? ctx.moveTo(px(i), py(v)) : ctx.lineTo(px(i), py(v))));
+  ctx.stroke();
+
+  // Best.
   ctx.strokeStyle = ACCENT;
   ctx.lineWidth = 1.4;
   ctx.beginPath();
-  hist.forEach((v, i) => {
-    const px = x + (i / (hist.length - 1)) * w;
-    const py = y + h - (v / max) * (h - 8) - 4;
-    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
-  });
+  best.forEach((v, i) => (i === 0 ? ctx.moveTo(px(i), py(v)) : ctx.lineTo(px(i), py(v))));
   ctx.stroke();
 
   ctx.fillStyle = MUTED;
