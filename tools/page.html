@@ -1,0 +1,220 @@
+<title>Gait Lab</title>
+
+<style>
+  :root {
+    --paper: #fbfbf9;
+    --ink: #12151a;
+    --muted: #8b939c;
+    --hairline: #e4e7e9;
+    --contract: #c8452e;
+    --extend: #2f6f8f;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #14171b;
+      --ink: #e8eaec;
+      --muted: #6f7880;
+      --hairline: #262b31;
+      --contract: #e0664c;
+      --extend: #5b9fc4;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #14171b; --ink: #e8eaec; --muted: #6f7880;
+    --hairline: #262b31; --contract: #e0664c; --extend: #5b9fc4;
+  }
+  :root[data-theme="light"] {
+    --paper: #fbfbf9; --ink: #12151a; --muted: #8b939c;
+    --hairline: #e4e7e9; --contract: #c8452e; --extend: #2f6f8f;
+  }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 28px 20px 56px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  header { display: flex; flex-direction: column; gap: 6px; }
+  h1 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .sub { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; max-width: 68ch; }
+
+  .stage { border: 1px solid var(--hairline); background: var(--paper); overflow: hidden; }
+  canvas { display: block; width: 100%; height: auto; }
+
+  .strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding-top: 2px;
+  }
+  button {
+    font: inherit;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink);
+    background: transparent;
+    border: 1px solid var(--hairline);
+    padding: 7px 13px;
+    cursor: pointer;
+    transition: border-color .12s, color .12s;
+  }
+  button:hover { border-color: var(--muted); }
+  button:focus-visible { outline: 2px solid var(--contract); outline-offset: 2px; }
+  button[aria-pressed="true"] { border-color: var(--ink); }
+  .spacer { flex: 1 1 auto; }
+  .legend { display: flex; gap: 14px; color: var(--muted); font-size: 10.5px; letter-spacing: .04em; }
+  .legend i { display: inline-block; width: 15px; height: 2px; vertical-align: middle; margin-right: 5px; }
+  .swatch-c { background: var(--contract); }
+  .swatch-e { background: var(--extend); }
+
+  .notes {
+    border-top: 1px solid var(--hairline);
+    padding-top: 16px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 20px;
+    color: var(--muted);
+    font-size: 11.5px;
+    line-height: 1.7;
+  }
+  .notes h2 {
+    margin: 0 0 5px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--ink);
+  }
+  .notes b { color: var(--ink); font-weight: 600; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Gait Lab</h1>
+    <p class="sub">
+      Sixty creatures, each steered by a 134-weight neural network. None of them are
+      told what walking is. Every generation the twelve that travelled furthest are
+      copied and mutated; the rest are discarded. Watch the ghosts converge.
+    </p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" width="1180" height="620"></canvas>
+  </div>
+
+  <div class="strip">
+    <button id="pause" aria-pressed="false">Pause</button>
+    <button id="reset">Restart evolution</button>
+    <button id="speed">Speed &times;1</button>
+    <button id="pop" aria-pressed="true">Population</button>
+    <span class="spacer"></span>
+    <span class="legend">
+      <span><i class="swatch-c"></i>contracting</span>
+      <span><i class="swatch-e"></i>extending</span>
+    </span>
+  </div>
+
+  <div class="notes">
+    <div>
+      <h2>No gradients</h2>
+      There is no backpropagation and no training data here. Selection and gaussian
+      mutation alone. At 134 weights the search space is small enough that copying
+      what worked beats computing what should work.
+    </div>
+    <div>
+      <h2>It learned to fly first</h2>
+      Verlet integration infers velocity from position, so every constraint correction
+      silently became momentum. Evolution found that within ten generations and swam
+      through the air, scoring ten times a real gait. Fixed by conserving
+      centre-of-mass velocity whenever no foot is loaded.
+    </div>
+    <div>
+      <h2>Then it learned to cheat</h2>
+      With honest physics it coiled its legs, catapulted once and glided &mdash; ninety
+      percent airborne. Distance alone is the wrong reward. Fitness is now
+      <b>distance &times; ground contact &times; posture</b>, with hard limits on
+      launch height and spine roll.
+    </div>
+    <div>
+      <h2>Reading the display</h2>
+      The solid figure is the current leader; the pale cloud behind it is the other
+      fifty-nine, each drawn in its own frame so the whole population superimposes.
+      A red ring marks a loaded foot. Early generations are chaos; the cloud
+      tightening into one silhouette is the population converging on a gait.
+    </div>
+  </div>
+</div>
+
+<script type="module">
+/*__SIM__*/
+/*__RENDER__*/
+
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+
+function palette() {
+  const s = getComputedStyle(document.documentElement);
+  const v = (n) => s.getPropertyValue(n).trim();
+  return {
+    paper: v('--paper'), ink: v('--ink'), muted: v('--muted'),
+    hairline: v('--hairline'), contract: v('--contract'), extend: v('--extend'),
+  };
+}
+
+let world = createWorld();
+let paused = false;
+let speed = 1;
+let showPop = true;
+
+const btnPause = document.getElementById('pause');
+const btnReset = document.getElementById('reset');
+const btnSpeed = document.getElementById('speed');
+const btnPop = document.getElementById('pop');
+
+btnPause.onclick = () => {
+  paused = !paused;
+  btnPause.textContent = paused ? 'Resume' : 'Pause';
+  btnPause.setAttribute('aria-pressed', String(paused));
+};
+btnReset.onclick = () => { world = createWorld(); };
+btnSpeed.onclick = () => {
+  speed = speed === 1 ? 4 : speed === 4 ? 16 : 1;
+  btnSpeed.innerHTML = `Speed &times;${speed}`;
+};
+btnPop.onclick = () => {
+  showPop = !showPop;
+  btnPop.setAttribute('aria-pressed', String(showPop));
+};
+
+function frame() {
+  if (!paused) for (let i = 0; i < speed; i++) stepWorld(world);
+  setPalette(palette());
+  render(ctx, world, cv.width, cv.height, {
+    leader: leader(world),
+    showPopulation: showPop,
+  });
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>

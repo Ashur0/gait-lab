@@ -1,0 +1,815 @@
+<title>Gait Lab</title>
+
+<style>
+  :root {
+    --paper: #fbfbf9;
+    --ink: #12151a;
+    --muted: #8b939c;
+    --hairline: #e4e7e9;
+    --contract: #c8452e;
+    --extend: #2f6f8f;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #14171b;
+      --ink: #e8eaec;
+      --muted: #6f7880;
+      --hairline: #262b31;
+      --contract: #e0664c;
+      --extend: #5b9fc4;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #14171b; --ink: #e8eaec; --muted: #6f7880;
+    --hairline: #262b31; --contract: #e0664c; --extend: #5b9fc4;
+  }
+  :root[data-theme="light"] {
+    --paper: #fbfbf9; --ink: #12151a; --muted: #8b939c;
+    --hairline: #e4e7e9; --contract: #c8452e; --extend: #2f6f8f;
+  }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 28px 20px 56px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  header { display: flex; flex-direction: column; gap: 6px; }
+  h1 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .sub { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; max-width: 68ch; }
+
+  .stage { border: 1px solid var(--hairline); background: var(--paper); overflow: hidden; }
+  canvas { display: block; width: 100%; height: auto; }
+
+  .strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding-top: 2px;
+  }
+  button {
+    font: inherit;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink);
+    background: transparent;
+    border: 1px solid var(--hairline);
+    padding: 7px 13px;
+    cursor: pointer;
+    transition: border-color .12s, color .12s;
+  }
+  button:hover { border-color: var(--muted); }
+  button:focus-visible { outline: 2px solid var(--contract); outline-offset: 2px; }
+  button[aria-pressed="true"] { border-color: var(--ink); }
+  .spacer { flex: 1 1 auto; }
+  .legend { display: flex; gap: 14px; color: var(--muted); font-size: 10.5px; letter-spacing: .04em; }
+  .legend i { display: inline-block; width: 15px; height: 2px; vertical-align: middle; margin-right: 5px; }
+  .swatch-c { background: var(--contract); }
+  .swatch-e { background: var(--extend); }
+
+  .notes {
+    border-top: 1px solid var(--hairline);
+    padding-top: 16px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 20px;
+    color: var(--muted);
+    font-size: 11.5px;
+    line-height: 1.7;
+  }
+  .notes h2 {
+    margin: 0 0 5px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--ink);
+  }
+  .notes b { color: var(--ink); font-weight: 600; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Gait Lab</h1>
+    <p class="sub">
+      Sixty creatures, each steered by a 134-weight neural network. None of them are
+      told what walking is. Every generation the twelve that travelled furthest are
+      copied and mutated; the rest are discarded. Watch the ghosts converge.
+    </p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" width="1180" height="620"></canvas>
+  </div>
+
+  <div class="strip">
+    <button id="pause" aria-pressed="false">Pause</button>
+    <button id="reset">Restart evolution</button>
+    <button id="speed">Speed &times;1</button>
+    <button id="pop" aria-pressed="true">Population</button>
+    <span class="spacer"></span>
+    <span class="legend">
+      <span><i class="swatch-c"></i>contracting</span>
+      <span><i class="swatch-e"></i>extending</span>
+    </span>
+  </div>
+
+  <div class="notes">
+    <div>
+      <h2>No gradients</h2>
+      There is no backpropagation and no training data here. Selection and gaussian
+      mutation alone. At 134 weights the search space is small enough that copying
+      what worked beats computing what should work.
+    </div>
+    <div>
+      <h2>It learned to fly first</h2>
+      Verlet integration infers velocity from position, so every constraint correction
+      silently became momentum. Evolution found that within ten generations and swam
+      through the air, scoring ten times a real gait. Fixed by conserving
+      centre-of-mass velocity whenever no foot is loaded.
+    </div>
+    <div>
+      <h2>Then it learned to cheat</h2>
+      With honest physics it coiled its legs, catapulted once and glided &mdash; ninety
+      percent airborne. Distance alone is the wrong reward. Fitness is now
+      <b>distance &times; ground contact &times; posture</b>, with hard limits on
+      launch height and spine roll.
+    </div>
+    <div>
+      <h2>Reading the display</h2>
+      The solid figure is the current leader; the pale cloud behind it is the other
+      fifty-nine, each drawn in its own frame so the whole population superimposes.
+      A red ring marks a loaded foot. Early generations are chaos; the cloud
+      tightening into one silhouette is the population converging on a gait.
+    </div>
+  </div>
+</div>
+
+<script type="module">
+/**
+ * Gait Lab — physics + evolution core.
+ *
+ * No DOM, no canvas: this file runs identically in Node (for headless testing and
+ * screenshots) and in the browser. render.js draws whatever this produces.
+ *
+ * Physics is Verlet integration with distance constraints rather than a rigid-body
+ * joint solver. That is a deliberate choice: constraint relaxation cannot inject
+ * energy the way an impulse solver can, so the creatures are numerically stable
+ * under mutation. An evolved controller WILL find whatever explosion your physics
+ * allows, so the physics has to be un-explodable.
+ */
+
+const GRAVITY = 0.45;
+const DAMPING = 0.995;
+const CONSTRAINT_ITERATIONS = 10;  // stiffer torso — 6 lets the body fold in half
+const GROUND_Y = 0;
+const GROUND_FRICTION = 0.42;
+// Max height the COM may reach above rest before we call it a leap, not a step.
+const LAUNCH_CEILING = 90;
+// Standing centre-of-mass height, used as the posture reference.
+const MAX_TILT = 0.62;  // rad (~35 deg) of spine roll before we call it a fall
+const REST_Y = -37.9;  // measured: settled COM of the unactuated body
+
+// ── Creature morphology ───────────────────────────────────────────────────────
+// Hand-designed rather than randomised: a recognisable body reads as a creature
+// learning to walk, where a random node-soup reads as noise. Nodes are laid out in
+// a body-local frame; y is up-negative (screen convention) and the feet sit at y=0.
+const MORPHOLOGY = {
+  nodes: [
+    { x: -20, y: -76, m: 0.5 }, //  0 head
+    { x: 4, y: -64, m: 1.0 }, //  1 shoulder
+    { x: 30, y: -62, m: 1.0 }, //  2 mid-spine
+    { x: 56, y: -64, m: 1.0 }, //  3 hip
+    { x: 2, y: -33, m: 0.7 }, //  4 front knee
+    { x: 0, y: 0, m: 1.1 }, //  5 front foot
+    { x: 58, y: -33, m: 0.7 }, //  6 rear knee
+    { x: 60, y: 0, m: 1.1 }, //  7 rear foot
+  ],
+  // Rigid scaffolding — spine, neck, thighs, and the braces that stop the knees
+  // collapsing into the torso. Never actuated.
+  bones: [
+    [0, 1], [1, 2], [2, 3], // spine + neck
+    [0, 2], [1, 3], // spine braces
+    [1, 4], [3, 6], // thighs
+    [2, 4], [2, 6], // knee braces
+  ],
+  // Actuated springs. The controller modulates each rest length by ±`range`.
+  // Shortening 1–5 pulls the foot toward the shoulder, which bends the knee: a real
+  // two-segment leg rather than a telescoping stick.
+  muscles: [
+    { a: 4, b: 5, range: 0.34 }, //  front shin  — extend/retract
+    { a: 6, b: 7, range: 0.34 }, //  rear shin
+    { a: 1, b: 5, range: 0.24 }, //  front swing — drives the leg fore/aft
+    { a: 3, b: 7, range: 0.24 }, //  rear swing
+  ],
+  head: 0,
+  feet: [5, 7],
+};
+
+const N_MUSCLES = MORPHOLOGY.muscles.length;
+const N_INPUTS = 8;
+const N_HIDDEN = 10;
+const N_PARAMS =
+  N_INPUTS * N_HIDDEN + N_HIDDEN + N_HIDDEN * N_MUSCLES + N_MUSCLES;
+
+// ── Tiny MLP policy ───────────────────────────────────────────────────────────
+// tanh hidden layer, tanh output. Outputs map directly to muscle contraction in
+// [-1, 1]. Small enough (that's 134 weights) that plain evolution beats gradient
+// methods here — no backprop, no dataset, no training rig.
+function policy(params, inputs, out) {
+  let p = 0;
+  const hidden = new Float64Array(N_HIDDEN);
+  for (let h = 0; h < N_HIDDEN; h++) {
+    let sum = params[p + N_INPUTS * N_HIDDEN + h]; // bias block sits after weights
+    for (let i = 0; i < N_INPUTS; i++) sum += inputs[i] * params[p + h * N_INPUTS + i];
+    hidden[h] = Math.tanh(sum);
+  }
+  p += N_INPUTS * N_HIDDEN + N_HIDDEN;
+  for (let o = 0; o < N_MUSCLES; o++) {
+    let sum = params[p + N_HIDDEN * N_MUSCLES + o];
+    for (let h = 0; h < N_HIDDEN; h++) sum += hidden[h] * params[p + o * N_HIDDEN + h];
+    out[o] = Math.tanh(sum);
+  }
+  return out;
+}
+
+// ── One creature instance ─────────────────────────────────────────────────────
+function createCreature(params) {
+  const n = MORPHOLOGY.nodes.length;
+  const c = {
+    params,
+    x: new Float64Array(n),
+    y: new Float64Array(n),
+    px: new Float64Array(n),
+    py: new Float64Array(n),
+    m: new Float64Array(n),
+    grounded: new Uint8Array(n),
+    bones: [],
+    muscles: [],
+    act: new Float64Array(N_MUSCLES),
+    t: 0,
+    frames: 0,
+    contactFrames: 0,
+    contactFrac: 0,
+    postureSum: 0,
+    postureFrac: 0,
+    startX: 0,
+    fitness: 0,
+    alive: true,
+  };
+  for (let i = 0; i < n; i++) {
+    const nd = MORPHOLOGY.nodes[i];
+    c.x[i] = c.px[i] = nd.x;
+    c.y[i] = c.py[i] = nd.y;
+    c.m[i] = nd.m;
+  }
+  const dist = (a, b) => Math.hypot(c.x[a] - c.x[b], c.y[a] - c.y[b]);
+  for (const [a, b] of MORPHOLOGY.bones) c.bones.push({ a, b, len: dist(a, b) });
+  for (const mu of MORPHOLOGY.muscles)
+    c.muscles.push({ a: mu.a, b: mu.b, len: dist(mu.a, mu.b), range: mu.range });
+  c.startX = centreX(c);
+  return c;
+}
+
+/** Mass-weighted centre-of-mass velocity. axis 0 = x, 1 = y. */
+function comVel(c, axis) {
+  let p = 0, M = 0;
+  for (let i = 0; i < c.x.length; i++) {
+    const v = axis === 0 ? c.x[i] - c.px[i] : c.y[i] - c.py[i];
+    p += c.m[i] * v;
+    M += c.m[i];
+  }
+  return p / M;
+}
+
+function centreX(c) {
+  let s = 0;
+  for (let i = 0; i < c.x.length; i++) s += c.x[i];
+  return s / c.x.length;
+}
+function centreY(c) {
+  let s = 0;
+  for (let i = 0; i < c.y.length; i++) s += c.y[i];
+  return s / c.y.length;
+}
+
+const _in = new Float64Array(N_INPUTS);
+
+function stepCreature(c) {
+  if (!c.alive) return;
+  c.t++;
+
+  // ── Sense ───────────────────────────────────────────────────────────────────
+  // A phase clock is included deliberately: locomotion is periodic, and giving the
+  // network a rhythm to latch onto is the difference between "learns to walk in 40
+  // generations" and "never leaves the ground".
+  const phase = c.t * 0.06;
+  const cx = centreX(c);
+  const cy = centreY(c);
+  _in[0] = Math.sin(phase);
+  _in[1] = Math.cos(phase);
+  _in[2] = (c.y[1] - c.y[3]) / 30; // body pitch
+  _in[3] = (cy - GROUND_Y) / 60 + 1; // ride height
+  _in[4] = (c.x[2] - c.px[2]) * 0.5; // forward velocity
+  _in[5] = c.grounded[5] ? 1 : -1; // front foot contact
+  _in[6] = c.grounded[7] ? 1 : -1; // rear foot contact
+  _in[7] = 1; // constant — lets the net learn a resting posture
+
+  policy(c.params, _in, c.act);
+
+  // ── Integrate ───────────────────────────────────────────────────────────────
+  for (let i = 0; i < c.x.length; i++) {
+    const vx = (c.x[i] - c.px[i]) * DAMPING;
+    const vy = (c.y[i] - c.py[i]) * DAMPING;
+    c.px[i] = c.x[i];
+    c.py[i] = c.y[i];
+    c.x[i] += vx;
+    c.y[i] += vy + GRAVITY;
+  }
+
+  // Centre-of-mass velocity immediately after integration. Constraints are INTERNAL
+  // forces and must not change it (Newton's third law); only the ground may.
+  const preVx = comVel(c, 0);
+  const preVy = comVel(c, 1);
+
+  // ── Satisfy constraints ─────────────────────────────────────────────────────
+  let anyGrounded = 0;
+  for (let it = 0; it < CONSTRAINT_ITERATIONS; it++) {
+    for (const b of c.bones) solve(c, b.a, b.b, b.len, 1.0);
+    for (let k = 0; k < c.muscles.length; k++) {
+      const mu = c.muscles[k];
+      solve(c, mu.a, mu.b, mu.len * (1 + c.act[k] * mu.range), 0.85);
+    }
+    // Ground is resolved inside the relaxation loop so feet don't sink between
+    // constraint passes — resolving it only once per frame produces visible jitter.
+    for (let i = 0; i < c.x.length; i++) {
+      c.grounded[i] = 0;
+      if (c.y[i] > GROUND_Y) {
+        c.y[i] = GROUND_Y;
+        c.grounded[i] = 1;
+        anyGrounded = 1;
+        const vx = c.x[i] - c.px[i];
+        c.x[i] = c.px[i] + vx * (1 - GROUND_FRICTION);
+      }
+    }
+  }
+
+  // ── Conserve momentum while airborne ────────────────────────────────────────
+  // Without this the creature swims. Verlet infers velocity from position, so every
+  // constraint correction silently becomes momentum — and evolution finds that within
+  // ~10 generations, producing a flying creature that never touches the ground and
+  // scores 10x a real gait. With no foot in contact there is no external force, so we
+  // hold COM velocity to its post-gravity value and let only shape change internally.
+  if (!anyGrounded) {
+    const dvx = comVel(c, 0) - preVx;
+    const dvy = comVel(c, 1) - preVy;
+    for (let i = 0; i < c.x.length; i++) {
+      c.px[i] += dvx;
+      c.py[i] += dvy;
+    }
+  }
+
+  // A creature that has face-planted is done — otherwise evolution discovers that
+  // faceplanting and sliding scores as well as walking, and you get a population of
+  // very fast corpses instead of a gait.
+  if (c.y[1] > -14 && c.y[3] > -14) c.alive = false;
+
+  // Ballistic leaps are not a gait. Without this, the winning strategy is to coil the
+  // legs, catapult once, and glide — 90% airborne, and it looks nothing like walking.
+  if (centreY(c) < -LAUNCH_CEILING) c.alive = false;
+
+  // Nor is lying down. Soft posture *shaping* was not enough on its own: distance
+  // still outbid it and the body settled into a diagonal triangle that shuffled along.
+  // A hard tilt limit forbids that whole family of solutions outright, the same way
+  // the launch ceiling forbids gliding. Constraints beat incentives here.
+  const spineTilt = Math.atan2(c.y[3] - c.y[1], c.x[3] - c.x[1]);
+  if (Math.abs(spineTilt) > MAX_TILT) c.alive = false;
+
+  if (anyGrounded) c.contactFrames++;
+  c.frames++;
+
+  // Posture bookkeeping. `level` = torso close to horizontal; `tall` = riding at
+  // roughly its standing height rather than folded onto the ground.
+  const level = 1 - Math.min(1, Math.abs(c.y[1] - c.y[3]) / 34);
+  const tall = 1 - Math.min(1, Math.abs(centreY(c) - REST_Y) / 26);
+  c.postureSum += level * 0.5 + tall * 0.5;
+
+  // ── Fitness shaping ─────────────────────────────────────────────────────────
+  // Distance alone selects for hopping and gliding. Weighting by the fraction of
+  // time a foot is actually loaded is what selects for a *gait*. This is the whole
+  // craft of evolutionary robotics: you don't get what you want, you get what you
+  // measure.
+  const dist = centreX(c) - c.startX;
+  const contactFrac = c.frames ? c.contactFrames / c.frames : 0;
+  const postureFrac = c.frames ? c.postureSum / c.frames : 0;
+  c.contactFrac = contactFrac;
+  c.postureFrac = postureFrac;
+  // Distance x gait x posture. Drop the posture term and evolution converges on a
+  // folded tangle that shuffles forward fast — it scores well and looks like nothing.
+  c.fitness = dist * (0.2 + 0.8 * contactFrac) * (0.15 + 0.85 * postureFrac);
+}
+
+function solve(c, a, b, target, stiffness) {
+  const dx = c.x[b] - c.x[a];
+  const dy = c.y[b] - c.y[a];
+  const d = Math.hypot(dx, dy) || 1e-6;
+  const diff = ((d - target) / d) * stiffness * 0.5;
+  const ma = c.m[a], mb = c.m[b];
+  const wa = mb / (ma + mb), wb = ma / (ma + mb);
+  c.x[a] += dx * diff * 2 * wa;
+  c.y[a] += dy * diff * 2 * wa;
+  c.x[b] -= dx * diff * 2 * wb;
+  c.y[b] -= dy * diff * 2 * wb;
+}
+
+// ── Evolution ─────────────────────────────────────────────────────────────────
+// Truncation selection + gaussian mutation. Deliberately the simplest thing that
+// works: no crossover, no adaptive sigma, nothing to tune or explain.
+const POP_SIZE = 60;
+const EPISODE_STEPS = 620;
+const ELITE_FRAC = 0.2;
+const SIGMA = 0.22;
+
+function gauss() {
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+function createWorld(seed = 1) {
+  const w = {
+    generation: 0,
+    step: 0,
+    population: [],
+    genomes: [],
+    history: [],
+    best: 0,
+    bestEver: 0,
+    bestGenome: null,
+  };
+  for (let i = 0; i < POP_SIZE; i++) {
+    const g = new Float64Array(N_PARAMS);
+    for (let j = 0; j < N_PARAMS; j++) g[j] = gauss() * 0.6;
+    w.genomes.push(g);
+  }
+  respawn(w);
+  return w;
+}
+
+function respawn(w) {
+  w.population = w.genomes.map((g) => createCreature(g));
+  w.step = 0;
+}
+
+/** Advance the whole population one physics tick. Returns true if the generation ended. */
+function stepWorld(w) {
+  for (const c of w.population) stepCreature(c);
+  w.step++;
+  if (w.step < EPISODE_STEPS) return false;
+
+  const scored = w.population
+    .map((c, i) => ({ i, f: c.fitness }))
+    .sort((a, b) => b.f - a.f);
+  w.best = scored[0].f;
+  w.history.push(w.best);
+  if (w.best > w.bestEver) {
+    w.bestEver = w.best;
+    w.bestGenome = Float64Array.from(w.genomes[scored[0].i]);
+  }
+
+  const nElite = Math.max(2, Math.round(POP_SIZE * ELITE_FRAC));
+  const elites = scored.slice(0, nElite).map((s) => w.genomes[s.i]);
+  const next = elites.map((g) => Float64Array.from(g)); // elitism: keep them intact
+  while (next.length < POP_SIZE) {
+    const parent = elites[Math.floor(Math.random() * elites.length)];
+    const child = Float64Array.from(parent);
+    for (let j = 0; j < N_PARAMS; j++) if (Math.random() < 0.28) child[j] += gauss() * SIGMA;
+    next.push(child);
+  }
+  w.genomes = next;
+  w.generation++;
+  respawn(w);
+  return true;
+}
+
+function leader(w) {
+  let best = w.population[0];
+  for (const c of w.population) if (c.fitness > best.fitness) best = c;
+  return best;
+}
+
+const _internals = { MORPHOLOGY, GROUND_Y, centreX, centreY };
+
+/**
+ * Gait Lab — renderer.
+ *
+ * Takes any 2D context (browser canvas OR @napi-rs/canvas in Node) so the exact
+ * code that ships is the code I screenshot headlessly while building.
+ *
+ * Visual language is deliberately instrument-like: paper-white ground, hairline
+ * grid, one accent colour, monospace numerals. The subject is strange enough that
+ * the presentation should be calm.
+ */
+
+// Mutable so the page can hand us a dark palette; the canvas must not stay a white
+// slab when the viewer's theme is dark.
+let INK = '#12151a';
+let MUTED = '#8b939c';
+let HAIRLINE = '#e4e7e9';
+let PAPER = '#fbfbf9';
+let ACCENT = '#c8452e'; // contraction
+let ACCENT2 = '#2f6f8f'; // extension
+
+function setPalette(p) {
+  INK = p.ink; MUTED = p.muted; HAIRLINE = p.hairline;
+  PAPER = p.paper; ACCENT = p.contract; ACCENT2 = p.extend;
+}
+
+const MONO = '11px GaitMono, ui-monospace, Menlo, Consolas, monospace';
+const MONO_SM = '9px GaitMono, ui-monospace, Menlo, Consolas, monospace';
+const MONO_LG = '26px GaitMono, ui-monospace, Menlo, Consolas, monospace';
+
+function render(ctx, world, W, H, opts = {}) {
+  const { leader, groundY = H - 96, showPopulation = true, scale = 1.9 } = opts;
+
+  ctx.fillStyle = PAPER;
+  ctx.fillRect(0, 0, W, H);
+
+  // Treadmill: the ground scrolls, the creatures stay put. Each is drawn relative to
+  // its own centre of mass so the whole population superimposes at one anchor.
+  const scrollX = leader ? leaderX(leader) * scale : 0;
+  const anchorX = W * 0.42;
+
+  drawGrid(ctx, W, H, scrollX, groundY);
+  drawGround(ctx, W, H, scrollX, groundY, scale);
+
+  if (showPopulation) {
+    for (const c of world.population) {
+      if (c === leader || !c.alive) continue;
+      drawAt(ctx, c, anchorX, groundY, scale, 0.09, false);
+    }
+  }
+  if (leader) drawAt(ctx, leader, anchorX, groundY, scale, 1, true);
+
+  drawPanel(ctx, world, W, H, leader);
+}
+
+/** Draw one creature at a fixed screen anchor, in its own local frame. */
+function drawAt(ctx, c, anchorX, groundY, scale, alpha, highlight) {
+  ctx.save();
+  ctx.translate(anchorX, groundY);
+  ctx.scale(scale, scale);
+  ctx.translate(-leaderX(c), 0);
+  drawCreature(ctx, c, alpha, highlight);
+  ctx.restore();
+}
+
+function leaderX(c) {
+  let s = 0;
+  for (let i = 0; i < c.x.length; i++) s += c.x[i];
+  return s / c.x.length;
+}
+
+// ── Environment ───────────────────────────────────────────────────────────────
+function drawGrid(ctx, W, H, camX, groundY) {
+  ctx.strokeStyle = HAIRLINE;
+  ctx.lineWidth = 1;
+  const step = 40;
+  const off = -(camX % step);
+  ctx.beginPath();
+  for (let x = off; x < W; x += step) {
+    ctx.moveTo(Math.round(x) + 0.5, 0);
+    ctx.lineTo(Math.round(x) + 0.5, groundY);
+  }
+  for (let y = groundY; y > 0; y -= step) {
+    ctx.moveTo(0, Math.round(y) + 0.5);
+    ctx.lineTo(W, Math.round(y) + 0.5);
+  }
+  ctx.stroke();
+}
+
+function drawGround(ctx, W, H, camX, groundY, scale = 1) {
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 1.25;
+  ctx.beginPath();
+  ctx.moveTo(0, groundY + 0.5);
+  ctx.lineTo(W, groundY + 0.5);
+  ctx.stroke();
+
+  // Hatching below grade — reads as "solid" without a heavy fill.
+  ctx.strokeStyle = HAIRLINE;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  const s = 9;
+  const off = -(camX % s);
+  for (let x = off - H; x < W + s; x += s) {
+    ctx.moveTo(x, groundY + 1);
+    ctx.lineTo(x + 22, groundY + 23);
+  }
+  ctx.stroke();
+  ctx.fillStyle = PAPER;
+  ctx.fillRect(0, groundY + 24, W, H - groundY);
+
+  // Distance ticks every 200px of world space.
+  ctx.fillStyle = MUTED;
+  ctx.font = MONO_SM;
+  ctx.textAlign = 'center';
+  const stepPx = 200 * scale;
+  const first = Math.floor(camX / stepPx) * stepPx;
+  for (let sxWorld = first; sxWorld < camX + W; sxWorld += stepPx) {
+    const sx = sxWorld - camX;
+    const wx = Math.round(sxWorld / scale);
+    if (sx < 24 || sx > W - 24) continue;
+    ctx.strokeStyle = MUTED;
+    ctx.beginPath();
+    ctx.moveTo(sx + 0.5, groundY + 1);
+    ctx.lineTo(sx + 0.5, groundY + 7);
+    ctx.stroke();
+    ctx.fillText(`${wx}`, sx, groundY + 19);
+  }
+  ctx.textAlign = 'left';
+}
+
+// ── Creature ──────────────────────────────────────────────────────────────────
+function drawCreature(ctx, c, alpha, highlight) {
+  ctx.globalAlpha = alpha;
+
+  // Bones — hairline structure.
+  ctx.strokeStyle = highlight ? INK : MUTED;
+  ctx.lineWidth = (highlight ? 1.6 : 1) / 1.9;
+  ctx.beginPath();
+  for (const b of c.bones) {
+    ctx.moveTo(c.x[b.a], c.y[b.a]);
+    ctx.lineTo(c.x[b.b], c.y[b.b]);
+  }
+  ctx.stroke();
+
+  // Muscles — thickness and hue encode actuation, so the gait is legible as a
+  // pattern of colour, not just motion.
+  for (let k = 0; k < c.muscles.length; k++) {
+    const mu = c.muscles[k];
+    const a = c.act[k];
+    ctx.strokeStyle = highlight ? (a < 0 ? ACCENT : ACCENT2) : MUTED;
+    ctx.lineWidth = (highlight ? 1 + Math.abs(a) * 3.2 : 1) / 1.9;
+    ctx.globalAlpha = alpha * (highlight ? 0.35 + Math.abs(a) * 0.65 : 1);
+    ctx.beginPath();
+    ctx.moveTo(c.x[mu.a], c.y[mu.a]);
+    ctx.lineTo(c.x[mu.b], c.y[mu.b]);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = alpha;
+
+  // Joints.
+  ctx.fillStyle = highlight ? INK : MUTED;
+  for (let i = 0; i < c.x.length; i++) {
+    const foot = i === 5 || i === 7;
+    const r = highlight ? (i === 0 ? 4.6 : foot ? 3.4 : 2.6) : 1.6;
+    ctx.beginPath();
+    ctx.arc(c.x[i], c.y[i], r, 0, Math.PI * 2);
+    ctx.fill();
+    // Contact marker — a ring when the foot is loaded.
+    if (highlight && foot && c.grounded[i]) {
+      ctx.strokeStyle = ACCENT;
+      ctx.lineWidth = 1.4 / 1.9;
+      ctx.beginPath();
+      ctx.arc(c.x[i], c.y[i], 7, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ── Instrument panel ──────────────────────────────────────────────────────────
+function drawPanel(ctx, world, W, H, leader) {
+  const pad = 22;
+
+  ctx.fillStyle = INK;
+  ctx.font = MONO_LG;
+  ctx.fillText(`GEN ${String(world.generation).padStart(3, '0')}`, pad, pad + 22);
+
+  ctx.font = MONO;
+  ctx.fillStyle = MUTED;
+  const rows = [
+    ['population', `${world.population.length}`],
+    ['episode', `${world.step}/620`],
+    ['best this gen', leader ? `${(leaderX(leader) - leader.startX).toFixed(0)} px` : '\u2014'],
+    ['best ever', `${world.bestEver.toFixed(0)} px`],
+    ['foot contact', leader ? `${(leader.contactFrac * 100).toFixed(0)} %` : '\u2014'],
+  ];
+  rows.forEach(([k, v], i) => {
+    const y = pad + 46 + i * 15;
+    ctx.fillStyle = MUTED;
+    ctx.fillText(k, pad, y);
+    ctx.fillStyle = INK;
+    ctx.textAlign = 'right';
+    ctx.fillText(v, pad + 148, y);
+    ctx.textAlign = 'left';
+  });
+
+  drawFitnessPlot(ctx, world, W - 250 - pad, pad, 250, 92);
+
+  ctx.font = MONO_SM;
+  ctx.fillStyle = MUTED;
+  ctx.fillText('GAIT LAB \u2014 evolved locomotion, 134 weights, no gradients', pad, H - pad);
+}
+
+function drawFitnessPlot(ctx, world, x, y, w, h) {
+  ctx.strokeStyle = HAIRLINE;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x + 0.5, y + 0.5, w, h);
+
+  ctx.fillStyle = MUTED;
+  ctx.font = MONO_SM;
+  ctx.fillText('BEST DISTANCE / GENERATION', x, y - 6);
+
+  const hist = world.history;
+  if (hist.length < 2) return;
+  const max = Math.max(...hist, 1);
+
+  ctx.strokeStyle = ACCENT;
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  hist.forEach((v, i) => {
+    const px = x + (i / (hist.length - 1)) * w;
+    const py = y + h - (v / max) * (h - 8) - 4;
+    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+  });
+  ctx.stroke();
+
+  ctx.fillStyle = MUTED;
+  ctx.textAlign = 'right';
+  ctx.fillText(`${max.toFixed(0)}`, x + w - 3, y + 11);
+  ctx.textAlign = 'left';
+}
+
+
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+
+function palette() {
+  const s = getComputedStyle(document.documentElement);
+  const v = (n) => s.getPropertyValue(n).trim();
+  return {
+    paper: v('--paper'), ink: v('--ink'), muted: v('--muted'),
+    hairline: v('--hairline'), contract: v('--contract'), extend: v('--extend'),
+  };
+}
+
+let world = createWorld();
+let paused = false;
+let speed = 1;
+let showPop = true;
+
+const btnPause = document.getElementById('pause');
+const btnReset = document.getElementById('reset');
+const btnSpeed = document.getElementById('speed');
+const btnPop = document.getElementById('pop');
+
+btnPause.onclick = () => {
+  paused = !paused;
+  btnPause.textContent = paused ? 'Resume' : 'Pause';
+  btnPause.setAttribute('aria-pressed', String(paused));
+};
+btnReset.onclick = () => { world = createWorld(); };
+btnSpeed.onclick = () => {
+  speed = speed === 1 ? 4 : speed === 4 ? 16 : 1;
+  btnSpeed.innerHTML = `Speed &times;${speed}`;
+};
+btnPop.onclick = () => {
+  showPop = !showPop;
+  btnPop.setAttribute('aria-pressed', String(showPop));
+};
+
+function frame() {
+  if (!paused) for (let i = 0; i < speed; i++) stepWorld(world);
+  setPalette(palette());
+  render(ctx, world, cv.width, cv.height, {
+    leader: leader(world),
+    showPopulation: showPop,
+  });
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
